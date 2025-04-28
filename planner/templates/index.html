@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>园丁路线规划器</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+</head>
+<body class="p-4">
+
+    <h1>园丁路线规划器</h1>
+    <div class="mb-3">
+        <label for="destinations" class="form-label">目的地地址（每行一个，最多10个）</label>
+        <textarea id="destinations" class="form-control" rows="5" placeholder="输入地址..."></textarea>
+    </div>
+
+    <button id="start-btn" class="btn btn-primary">规划路线</button>
+
+    <h2 class="mt-4">优化后的路线：</h2>
+    <ol id="route-list"></ol>
+
+    <script>
+        $(document).ready(function(){
+            $('#start-btn').click(function(){
+                if (!navigator.geolocation) {
+                    alert("浏览器不支持定位");
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(function(position){
+                    const start = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    const destinations = $('#destinations').val().trim().split('\n').filter(Boolean);
+
+                    if (destinations.length === 0) {
+                        alert('请至少输入一个目的地');
+                        return;
+                    }
+
+                    $.ajax({
+                        url: '/api/optimize-route/',
+                        method: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ start: start, destinations: destinations }),
+                        success: function(response){
+                            $('#route-list').empty();
+                            response.route.forEach(function(place, index){
+                                $('#route-list').append('<li>' + JSON.stringify(place) + '</li>');
+                            });
+                        },
+                        error: function(xhr){
+                            alert('请求失败: ' + xhr.responseText);
+                        }
+                    });
+                }, function(error){
+                    alert('定位失败: ' + error.message);
+                });
+            });
+        });
+    </script>
+
+</body>
+</html>
