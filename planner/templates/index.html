@@ -59,7 +59,6 @@
     let map = null;
     let routePolyline = null;
 
-    // 获取当前位置
     function getLocation() {
         if (!navigator.geolocation) {
             showError("浏览器不支持定位");
@@ -79,7 +78,6 @@
         });
     }
 
-    // 初始化地图
     function initializeMap(location) {
         map = new AMap.Map('map', {
             center: [location.lng, location.lat],
@@ -93,17 +91,14 @@
         marker.setMap(map);
     }
 
-    // 显示错误信息
     function showError(message) {
         $('#error-message').text(message).show();
     }
 
-    // 清除错误信息
     function clearError() {
         $('#error-message').hide();
     }
 
-    // 输入验证
     function validateInput(destinations) {
         const destinationList = destinations.trim().split('\n').filter(Boolean);
         if (destinationList.length === 0) {
@@ -117,7 +112,6 @@
         return true;
     }
 
-    // 页面加载完成后自动获取位置
     $(document).ready(function() {
         getLocation();
 
@@ -145,13 +139,40 @@
                 success: function(response) {
                     $('#route-list').empty();
 
+                    if (routePolyline) {
+                        routePolyline.setMap(null);
+                        routePolyline = null;
+                    }
+
+                    let fullPath = [];
+
                     response.routes.forEach(function(route, index) {
                         $('#route-list').append('<li><strong>到达：' + route.destination + '</strong></li>');
 
                         route.instructions.forEach(function(instruction) {
                             $('#route-list').append('<li style="margin-left: 20px;">' + instruction + '</li>');
                         });
+
+                        route.path.forEach(function(coord) {
+                            fullPath.push(coord);
+                        });
+
+                        const lastPoint = route.path[route.path.length - 1];
+                        const marker = new AMap.Marker({
+                            position: lastPoint,
+                            title: '目的地：' + route.destination
+                        });
+                        marker.setMap(map);
                     });
+
+                    routePolyline = new AMap.Polyline({
+                        path: fullPath,
+                        strokeColor: "#ff6600",
+                        strokeWeight: 6,
+                        strokeOpacity: 0.9
+                    });
+                    routePolyline.setMap(map);
+                    map.setFitView();
                 },
                 error: function(xhr) {
                     showError('请求失败: ' + xhr.responseText);

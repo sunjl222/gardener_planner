@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 import json
 
-# 高德API的Key
+# 高德API Key
 AMAP_API_KEY = '865b15b3636b250390112ab3e5536084'
 
 # 地址转经纬度
@@ -14,11 +14,11 @@ def geocode(address):
     
     if result['status'] == '1' and result['geocodes']:
         lat_lng = result['geocodes'][0]['location'].split(',')
-        return float(lat_lng[1]), float(lat_lng[0])  # 返回纬度和经度
+        return float(lat_lng[1]), float(lat_lng[0])
     else:
         return None
 
-# 按段进行路径规划
+# 规划路线（多段）
 @csrf_exempt
 def optimize_route(request):
     if request.method == "POST":
@@ -38,24 +38,35 @@ def optimize_route(request):
                 if not dest_coords:
                     return JsonResponse({"error": f"地址无法解析: {dest}"}, status=400)
 
-                # 请求每段路径
+                # 请求路径
                 url = f'https://restapi.amap.com/v3/direction/driving?origin={current["lng"]},{current["lat"]}&destination={dest_coords[1]},{dest_coords[0]}&key={AMAP_API_KEY}'
                 response = requests.get(url)
                 result = response.json()
 
                 if result['status'] == '1' and result['route']['paths']:
-                    instructions = result['route']['paths'][0]['steps']
+                    path_data = result['route']['paths'][0]['steps']
+                    instructions = [step['instruction'] for step in path_data]
+
+                    coords = []
+                    for step in path_data:
+                        if 'polyline' in step:
+                            for point in step['polyline'].split(';'):
+                                lng, lat = map(float, point.split(','))
+                                coords.append([lng, lat])
+
                     steps.append({
                         "destination": dest,
-                        "instructions": [step['instruction'] for step in instructions]
+                        "instructions": instructions,
+                        "path": coords
                     })
-                    current = {"lat": dest_coords[0], "lng": dest_coords[1]}  # 更新当前位置
+
+                    current = {"lat": dest_coords[0], "lng": dest_coords[1]}
                 else:
                     return JsonResponse({"error": f"路径规划失败: {dest}"}, status=400)
 
             return JsonResponse({"routes": steps})
-        
+
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
-    
+
     return JsonResponse({"error": "只支持POST请求"}, status=405)
