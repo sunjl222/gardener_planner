@@ -5,6 +5,8 @@
     <title>园丁路线规划器</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <!-- 引入高德地图API -->
+    <script src="https://webapi.amap.com/maps?v=2.0&key=865b15b3636b250390112ab3e5536084"></script>
 </head>
 <body class="p-4">
 
@@ -24,8 +26,13 @@
     <h2 class="mt-4">优化后的路线：</h2>
     <ol id="route-list"></ol>
 
+    <!-- 地图展示容器 -->
+    <div id="map" style="width: 100%; height: 500px;"></div>
+
     <script>
         let userLocation = null;
+        let map = null;  // 地图对象
+        let routePolyline = null;  // 路线对象
 
         // 获取当前位置
         function getLocation() {
@@ -41,9 +48,47 @@
                 };
                 // 显示当前位置
                 document.getElementById("current-location").textContent = `纬度: ${userLocation.lat}, 经度: ${userLocation.lng}`;
+                
+                // 初始化地图
+                initializeMap(userLocation);
             }, function(error) {
                 alert('定位失败: ' + error.message);
             });
+        }
+
+        // 初始化地图
+        function initializeMap(location) {
+            map = new AMap.Map('map', {
+                center: [location.lng, location.lat],
+                zoom: 13
+            });
+
+            // 在地图上添加标记
+            const marker = new AMap.Marker({
+                position: [location.lng, location.lat],
+                title: '当前位置'
+            });
+            marker.setMap(map);
+        }
+
+        // 绘制路线
+        function drawRoute(route) {
+            const path = route.map(function(step) {
+                const coords = step.split(',');  // 经纬度坐标
+                return [parseFloat(coords[0]), parseFloat(coords[1])];
+            });
+
+            if (routePolyline) {
+                routePolyline.setPath(path);  // 更新路径
+            } else {
+                routePolyline = new AMap.Polyline({
+                    path: path,
+                    strokeColor: "#0000ff",  // 线颜色
+                    strokeWeight: 6,         // 线宽
+                    strokeOpacity: 0.7      // 透明度
+                });
+                routePolyline.setMap(map);  // 在地图上绘制路径
+            }
         }
 
         // 页面加载时自动获取位置
@@ -72,8 +117,11 @@
                     success: function(response){
                         $('#route-list').empty();
                         response.route.forEach(function(place, index){
-                            $('#route-list').append('<li>' + JSON.stringify(place) + '</li>');
+                            $('#route-list').append('<li>' + place + '</li>');
                         });
+
+                        // 绘制路线
+                        drawRoute(response.route);
                     },
                     error: function(xhr){
                         alert('请求失败: ' + xhr.responseText);
