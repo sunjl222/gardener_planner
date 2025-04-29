@@ -6,7 +6,7 @@ import json
 # 高德API的Key
 AMAP_API_KEY = '865b15b3636b250390112ab3e5536084'
 
-# 地理编码（地址转经纬度）
+# 地址转经纬度
 def geocode(address):
     url = f'https://restapi.amap.com/v3/geocode/geo?address={address}&key={AMAP_API_KEY}'
     response = requests.get(url)
@@ -18,33 +18,7 @@ def geocode(address):
     else:
         return None
 
-# 路径规划（计算最优路径）
-def optimize_route_planning(start, destinations):
-    # 起点
-    start_lat, start_lng = start['lat'], start['lng']
-    
-    # 转换目的地地址为经纬度
-    destination_coords = []
-    for dest in destinations:
-        coords = geocode(dest)
-        if coords:
-            destination_coords.append(coords)
-        else:
-            return None  # 如果有地址无法解析，返回错误
-
-    # 将目的地坐标传入高德路径规划接口
-    waypoints = "|".join([f"{lng},{lat}" for lat, lng in destination_coords])  # 经纬度坐标串联
-    url = f'https://restapi.amap.com/v3/direction/driving?origin={start_lng},{start_lat}&destination={destination_coords[-1][1]},{destination_coords[-1][0]}&waypoints={waypoints}&key={AMAP_API_KEY}'
-    
-    response = requests.get(url)
-    result = response.json()
-    
-    if result['status'] == '1' and result['route']:
-        route = result['route']['paths'][0]['steps']  # 获取最优路径步骤
-        return [step['instruction'] for step in route]  # 返回路线的指示
-    else:
-        return None
-
+# 按段进行路径规划
 @csrf_exempt
 def optimize_route(request):
     if request.method == "POST":
@@ -52,18 +26,36 @@ def optimize_route(request):
             data = json.loads(request.body)
             start = data.get("start")
             destinations = data.get("destinations", [])
-            
+
             if not start or not destinations:
                 return JsonResponse({"error": "缺少起点或目的地"}, status=400)
-            
-            # 获取最优路线
-            route_instructions = optimize_route_planning(start, destinations)
-            if route_instructions is None:
-                return JsonResponse({"error": "路线规划失败，请检查地址"}, status=400)
 
-            return JsonResponse({"route": route_instructions})
+            steps = []
+            current = start
+
+            for dest in destinations:
+                dest_coords = geocode(dest)
+                if not dest_coords:
+                    return JsonResponse({"error": f"地址无法解析: {dest}"}, status=400)
+
+                # 请求每段路径
+                url = f'https://restapi.amap.com/v3/direction/driving?origin={current["lng"]},{current["lat"]}&destination={dest_coords[1]},{dest_coords[0]}&key={AMAP_API_KEY}'
+                response = requests.get(url)
+                result = response.json()
+
+                if result['status'] == '1' and result['route']['paths']:
+                    instructions = result['route']['paths'][0]['steps']
+                    steps.append({
+                        "destination": dest,
+                        "instructions": [step['instruction'] for step in instructions]
+                    })
+                    current = {"lat": dest_coords[0], "lng": dest_coords[1]}  # 更新当前位置
+                else:
+                    return JsonResponse({"error": f"路径规划失败: {dest}"}, status=400)
+
+            return JsonResponse({"routes": steps})
         
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=500)
-    else:
-        return JsonResponse({"error": "只支持POST请求"}, status=405)
+    
+    return JsonResponse({"error": "只支持POST请求"}, status=405)

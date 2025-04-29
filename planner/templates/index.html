@@ -5,7 +5,6 @@
     <title>园丁路线规划器</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <!-- 引入高德地图API -->
     <script src="https://webapi.amap.com/maps?v=2.0&key=865b15b3636b250390112ab3e5536084"></script>
     <style>
         body {
@@ -32,155 +31,135 @@
 </head>
 <body>
 
-    <div class="container">
-        <h1 class="text-center">园丁路线规划器</h1>
+<div class="container">
+    <h1 class="text-center">园丁路线规划器</h1>
 
-        <div id="location-info" class="mb-3">
-            <p>当前位置信息：<span id="current-location">正在获取...</span></p>
-        </div>
-
-        <div class="mb-3">
-            <label for="destinations" class="form-label">目的地地址（每行一个，最多10个）</label>
-            <textarea id="destinations" class="form-control" rows="5" placeholder="输入地址..."></textarea>
-            <small class="form-text text-muted">请输入最多10个目的地地址，每个地址一行。</small>
-        </div>
-
-        <button id="start-btn" class="btn btn-primary w-100">规划路线</button>
-
-        <!-- 显示错误消息 -->
-        <div id="error-message" class="alert alert-danger" role="alert" style="display: none;"></div>
-
-        <h2 class="mt-4">优化后的路线：</h2>
-        <ol id="route-list" class="route-list"></ol>
-
-        <!-- 地图展示容器 -->
-        <div id="map"></div>
+    <div id="location-info" class="mb-3">
+        <p>当前位置信息：<span id="current-location">正在获取...</span></p>
     </div>
 
-    <script>
-        let userLocation = null;
-        let map = null;  // 地图对象
-        let routePolyline = null;  // 路线对象
+    <div class="mb-3">
+        <label for="destinations" class="form-label">目的地地址（每行一个，最多10个）</label>
+        <textarea id="destinations" class="form-control" rows="5" placeholder="输入地址..."></textarea>
+        <small class="form-text text-muted">请输入最多10个目的地地址，每个地址一行。</small>
+    </div>
 
-        // 获取当前位置
-        function getLocation() {
-            if (!navigator.geolocation) {
-                showError("浏览器不支持定位");
+    <button id="start-btn" class="btn btn-primary w-100">规划路线</button>
+
+    <div id="error-message" class="alert alert-danger" role="alert" style="display: none;"></div>
+
+    <h2 class="mt-4">优化后的路线：</h2>
+    <ol id="route-list" class="route-list"></ol>
+
+    <div id="map"></div>
+</div>
+
+<script>
+    let userLocation = null;
+    let map = null;
+    let routePolyline = null;
+
+    // 获取当前位置
+    function getLocation() {
+        if (!navigator.geolocation) {
+            showError("浏览器不支持定位");
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(function(position) {
+            userLocation = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude
+            };
+            document.getElementById("current-location").textContent =
+                `纬度: ${userLocation.lat}, 经度: ${userLocation.lng}`;
+            initializeMap(userLocation);
+        }, function(error) {
+            showError('定位失败: ' + error.message);
+        });
+    }
+
+    // 初始化地图
+    function initializeMap(location) {
+        map = new AMap.Map('map', {
+            center: [location.lng, location.lat],
+            zoom: 13
+        });
+
+        const marker = new AMap.Marker({
+            position: [location.lng, location.lat],
+            title: '当前位置'
+        });
+        marker.setMap(map);
+    }
+
+    // 显示错误信息
+    function showError(message) {
+        $('#error-message').text(message).show();
+    }
+
+    // 清除错误信息
+    function clearError() {
+        $('#error-message').hide();
+    }
+
+    // 输入验证
+    function validateInput(destinations) {
+        const destinationList = destinations.trim().split('\n').filter(Boolean);
+        if (destinationList.length === 0) {
+            showError('请至少输入一个目的地');
+            return false;
+        }
+        if (destinationList.length > 10) {
+            showError('最多只能输入10个目的地');
+            return false;
+        }
+        return true;
+    }
+
+    // 页面加载完成后自动获取位置
+    $(document).ready(function() {
+        getLocation();
+
+        $('#start-btn').click(function() {
+            clearError();
+
+            if (!userLocation) {
+                showError("无法获取当前位置，请稍后再试");
                 return;
             }
 
-            navigator.geolocation.getCurrentPosition(function(position) {
-                userLocation = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude
-                };
-                // 显示当前位置
-                document.getElementById("current-location").textContent = `纬度: ${userLocation.lat}, 经度: ${userLocation.lng}`;
-                
-                // 初始化地图
-                initializeMap(userLocation);
-            }, function(error) {
-                showError('定位失败: ' + error.message);
-            });
-        }
+            const destinations = $('#destinations').val().trim();
+            if (!validateInput(destinations)) return;
 
-        // 初始化地图
-        function initializeMap(location) {
-            map = new AMap.Map('map', {
-                center: [location.lng, location.lat],
-                zoom: 13
-            });
+            const destinationList = destinations.split('\n').filter(Boolean);
 
-            // 在地图上添加标记
-            const marker = new AMap.Marker({
-                position: [location.lng, location.lat],
-                title: '当前位置'
-            });
-            marker.setMap(map);
-        }
+            $.ajax({
+                url: '/api/optimize-route/',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    start: userLocation,
+                    destinations: destinationList
+                }),
+                success: function(response) {
+                    $('#route-list').empty();
 
-        // 绘制路线
-        function drawRoute(route) {
-            const path = route.map(function(step) {
-                const coords = step.split(',');  // 经纬度坐标
-                return [parseFloat(coords[0]), parseFloat(coords[1])];
-            });
+                    response.routes.forEach(function(route, index) {
+                        $('#route-list').append('<li><strong>到达：' + route.destination + '</strong></li>');
 
-            if (routePolyline) {
-                routePolyline.setPath(path);  // 更新路径
-            } else {
-                routePolyline = new AMap.Polyline({
-                    path: path,
-                    strokeColor: "#0000ff",  // 线颜色
-                    strokeWeight: 6,         // 线宽
-                    strokeOpacity: 0.7      // 透明度
-                });
-                routePolyline.setMap(map);  // 在地图上绘制路径
-            }
-        }
-
-        // 显示错误信息
-        function showError(message) {
-            $('#error-message').text(message).show();
-        }
-
-        // 清除错误信息
-        function clearError() {
-            $('#error-message').hide();
-        }
-
-        // 输入验证
-        function validateInput(destinations) {
-            const destinationList = destinations.trim().split('\n').filter(Boolean);
-            if (destinationList.length === 0) {
-                showError('请至少输入一个目的地');
-                return false;
-            }
-            if (destinationList.length > 10) {
-                showError('最多只能输入10个目的地');
-                return false;
-            }
-            return true;
-        }
-
-        // 页面加载时自动获取位置
-        $(document).ready(function(){
-            getLocation();
-
-            $('#start-btn').click(function(){
-                clearError();  // 清除错误信息
-
-                if (!userLocation) {
-                    showError("无法获取当前位置，请稍后再试");
-                    return;
-                }
-
-                const destinations = $('#destinations').val().trim();
-                if (!validateInput(destinations)) return;
-
-                const destinationList = destinations.split('\n').filter(Boolean);
-
-                $.ajax({
-                    url: '/api/optimize-route/',
-                    method: 'POST',
-                    contentType: 'application/json',
-                    data: JSON.stringify({ start: userLocation, destinations: destinationList }),
-                    success: function(response){
-                        $('#route-list').empty();
-                        response.route.forEach(function(place, index){
-                            $('#route-list').append('<li>' + place + '</li>');
+                        route.instructions.forEach(function(instruction) {
+                            $('#route-list').append('<li style="margin-left: 20px;">' + instruction + '</li>');
                         });
-
-                        // 绘制路线
-                        drawRoute(response.route);
-                    },
-                    error: function(xhr){
-                        showError('请求失败: ' + xhr.responseText);
-                    }
-                });
+                    });
+                },
+                error: function(xhr) {
+                    showError('请求失败: ' + xhr.responseText);
+                }
             });
         });
-    </script>
+    });
+</script>
 
 </body>
 </html>
