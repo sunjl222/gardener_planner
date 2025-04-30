@@ -41,7 +41,7 @@
     <div class="mb-3">
         <label for="destinations" class="form-label">目的地地址（每行一个，最多10个）</label>
         <textarea id="destinations" class="form-control" rows="5" placeholder="输入地址..."></textarea>
-        <small class="form-text text-muted">请输入最多10个目的地地址，每个地址一行。</small>
+        <small class="form-text text-muted">请输入最多10个目的地地址（建议包含城市名称），每个地址一行。</small>
     </div>
 
     <button id="start-btn" class="btn btn-primary w-100">规划路线</button>
@@ -139,6 +139,14 @@
                 success: function(response) {
                     $('#route-list').empty();
 
+                    // 显示总距离（单位换成公里，保留1位小数）
+                    const km = (response.total_distance / 1000).toFixed(1);
+                    $('#route-list').append('<li><strong>最短总距离：</strong> ' + km + ' 公里</li>');
+
+                    // 显示顺序
+                    $('#route-list').append('<li><strong>优化后的顺序：</strong> ' + response.order.join(" → ") + '</li><hr>');
+
+                    // 清除旧路径
                     if (routePolyline) {
                         routePolyline.setMap(null);
                         routePolyline = null;
@@ -175,7 +183,13 @@
                     map.setFitView();
                 },
                 error: function(xhr) {
-                    showError('请求失败: ' + xhr.responseText);
+                    try {
+                        const json = JSON.parse(xhr.responseText);
+                        const msg = json.error || 'Unknown error';
+                        showError('请求失败：' + msg);
+                    } catch (e) {
+                        showError('请求失败（解析错误）: ' + xhr.responseText);
+                    }
                 }
             });
         });
